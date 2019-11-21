@@ -48,5 +48,93 @@ mount /dev/vg_root/lv_root /mnt
 ```
 xfsdump -J - /dev/VolGroup00/LogVol00 | xfsrestore -J - /mnt
 ```
-
+Проверим, что скопировалось
+```
+ls /mnt
+```
+Переконфигурируем grub для того, чтобы при старте перейти в новый /
+Сымитируем текущий root -> сделаем в него chroot и обновим grub:
+```
+for i in /proc/ /sys/ /dev/ /run/ /boot/; do mount --bind $i /mnt/$i; done
+chroot /mnt/
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+Обновим образ initrd. 
+```
+cd /boot ; for i in `ls initramfs-*img`; do dracut -v $i `echo $i|sed "s/initramfs-//g; s/.img//g"` --force; done
+```
 ![Image alt](https://github.com/Edo1993/otus_3/raw/master/3.png)
+
+Чтобы при загрузке был смонтирован нужный root: в файле /boot/grub2/grub.cfg заменим rd.lvm.lv=VolGroup00/LogVol00 на rd.lvm.lv=vg_root/lv_root. Для редактирования я использовала vim, установленный в самом начале.
+```
+vim /etc/default/grub
+```
+После изменений - обновила grub
+```
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+Выход, перезагрузка. После подключения можно проверить, что успешно загрузились с новым рут томом
+```
+lsblk
+```
+Теперь изменяем размер старой VG и возвращаем на него рут. Для этого удаляем старый LV размеров в 40G и создаем новый на 8G:
+```
+lvremove /dev/VolGroup00/LogVol00
+lvcreate -n VolGroup00/LogVol00 -L 8G /dev/VolGroup00
+```
+Создаём файловую систему
+```
+mkfs.xfs /dev/VolGroup00/LogVol00
+```
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/4.png)
+Монтируем файловую систему, копируем данные
+```
+mount /dev/VolGroup00/LogVol00 /mnt
+xfsdump -J - /dev/vg_root/lv_root | xfsrestore -J - /mnt
+```
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/5.png)
+
+Переконфигурируем grub, за исключением правки /etc/grub2/grub.cfg
+```
+for i in /proc/ /sys/ /dev/ /run/ /boot/; do mount --bind $i /mnt/$i; done
+chroot /mnt/
+grub2-mkconfig -o /boot/grub2/grub.cfg
+cd /boot ; for i in `ls initramfs-*img`; do dracut -v $i `echo $i|sed "s/initramfs-//g; s/.img//g"` --force; done
+```
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/6.png)
+Пока не перезагружаемся и не выходим из под chroot - мы можем заодно перенести /var
+На свободных дисках создаем зеркало:
+```
+pvcreate /dev/sdc /dev/sdd
+vgcreate vg_var /dev/sdc /dev/sdd
+lvcreate -L 950M -m1 -n lv_var vg_var
+```
+Создаем на нем ФС и перемещаем туда /var:
+```
+mkfs.ext4 /dev/vg_var/lv_var
+mount /dev/vg_var/lv_var /mnt
+cp -aR /var/* /mnt/      # rsync -avHPSAX /var/ /mnt/
+```
+На всякий случай сохраняем содержимое старого var:
+```
+mkdir /tmp/oldvar && mv /var/* /tmp/oldvar
+```
+Монтируем новый var в каталог /var:
+```
+umount /mnt
+mount /dev/vg_var/lv_var /var
+```
+Правим fstab для автоматического монтирования /var:
+```
+echo "`blkid | grep var: | awk '{print $2}'` /var ext4 defaults 0 0" >> /etc/fstab
+```
+Внесём правки в grub, заменив rd.lvm.lv=vg_root/lv_root на rd.lvm.lv=VolGroup00/LogVol00
+```
+grub2-mkconfig -o /boot/grub2/grub.cfg
+vim /etc/default/grub
+```
+После изменений - обновила grub
+```
+grub2-mkconfig -o /boot/grub2/grub.cfg
+```
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/7.png)
