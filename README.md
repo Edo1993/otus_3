@@ -32,3 +32,5 @@ sudo yum install xfsdump vim
 ```
 lsblk
 ```
+
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/1.png)
