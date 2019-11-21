@@ -15,7 +15,7 @@ lvm homework
 - восстановится со снапшота
 Залоггировать работу можно с помощью утилиты script
 
-Перед началом работ запускаем утилиту script
+Перед началом работ запускаем утилиту script (homework.log - приложен к репозиторию)
 ```script homework.log```
 
 Разворачиваем Vagrantfile, подключаемся к машине lvm
@@ -32,5 +32,21 @@ sudo yum install xfsdump vim
 ```
 lsblk
 ```
-
+Подготовим временный том для / раздела
+```
+pvcreate /dev/sdb
+vgcreate vg_root /dev/sdb
+lvcreate -n lv_root -l +100%FREE /dev/vg_root
+```
+Создадим на нем файловую систему и смонтируем его, чтобы перенести туда данные:
+```
+mkfs.xfs /dev/vg_root/lv_root
+mount /dev/vg_root/lv_root /mnt
+```
 ![Image alt](https://github.com/Edo1993/otus_3/raw/master/1.png)
+Этой командой скопируем все данные с / раздела в /mnt - итог вывода на скрине:
+```
+xfsdump -J - /dev/VolGroup00/LogVol00 | xfsrestore -J - /mnt
+```
+
+![Image alt](https://github.com/Edo1993/otus_3/raw/master/3.png)
